@@ -1,6 +1,7 @@
 from atexit import unregister
 from collections import namedtuple
 from logging import exception
+from shutil import ExecError
 import socket
 import selectors
 import sys
@@ -30,7 +31,8 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
     elif input[0] == "terminate":
         terminate(selector, connection_list, int(input[1]))
     elif input[0] == "exit":
-        exit_program()
+        (selector, connection_list) = exit_program(selector, connection_list)
+        raise Exception("Exiting program...")
     else:
         print(  "invalid command: use command "
                 "help to display valid commands" )
@@ -93,7 +95,7 @@ def send_message(selector: selectors.DefaultSelector, connection_list: list, con
         print("Message failed to send")
         return
 
-def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_id: int) -> None:
+def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_id: int) -> Union[selectors.DefaultSelector, list]:
     try:
         target_sock: socket.socket
         target_sock = None
@@ -110,13 +112,17 @@ def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_i
         selector.unregister(target_sock)
         target_sock.close()
         connection_list.remove((conn_id, target_sock))
-        return
+
+        return selector, connection_list
     except:
         print(exception)
-        return
+        return selector, connection_list
 
-def exit_program():
-    exit()
+def exit_program(selector: selectors.DefaultSelector, connection_list: list) -> Union[selectors.DefaultSelector, list]:
+        for entry in connection_list:
+            (selector, connection_list) = terminate(selector, connection_list, entry.id)
+
+        return selector, connection_list
 
 def get_id():
     global id
@@ -143,14 +149,14 @@ def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock
         recv_data = sock.recv(1024)
         if recv_data:
 
-            if receive_msg == b"\n\r\n\rterminate\n\r\n\r":
+            if recv_data == b"\n\r\n\rterminate\n\r\n\r":
+                print(f"Peer {data.addr} terminates the connection")
                 terminate(selector, connection_list, data.id)
-                return
+                return selector, connection_list
 
             print(f"Message received from {data.addr}:")
             print(recv_data.decode())
             #selector.unregister(sock)
-            return
 
     return selector, connection_list
 
@@ -169,30 +175,31 @@ def main():
     sel = selectors.DefaultSelector()
 
     lsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsocket.bind(("192.168.0.187", int(SEVER_PORT)))
+    lsocket.bind(("192.168.0.163", int(SEVER_PORT)))
     lsocket.listen()
     lsocket.setblocking(False)
 
     sel.register(lsocket, selectors.EVENT_READ, data=None)
     sel.register(sys.stdin, selectors.EVENT_READ, data="STDIN")
 
-    while True:
+    try:
+        while True:
 
-        #print(">>", flush=True, end=" ")
-        event = sel.select(timeout=None)
+            #print(">>", flush=True, end=" ")
+            event = sel.select(timeout=None)
 
-        for key, mask in event:
-            
-            if key.data == "STDIN":
-                (sel, conn_list) = menu(sel,conn_list)
-            else:
-                if key.data is None:
-                    (sel, conn_list) = accept_wrapper(sel, conn_list, key.fileobj)
+            for key, mask in event:
+                
+                if key.data == "STDIN":
+                    (sel, conn_list) = menu(sel,conn_list)
                 else:
-                    (sel, conn_list) = receive_msg(sel, conn_list, key.fileobj, key.data, mask)
-            
-
-    lsocket.close()
-
+                    if key.data is None:
+                        (sel, conn_list) = accept_wrapper(sel, conn_list, key.fileobj)
+                    else:
+                        (sel, conn_list) = receive_msg(sel, conn_list, key.fileobj, key.data, mask)
+    except Exception:
+        lsocket.close()
+        sel.close()
+        exit()        
 
 main()
