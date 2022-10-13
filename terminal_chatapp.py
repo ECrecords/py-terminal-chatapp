@@ -73,8 +73,15 @@ def list_connections(selector: selectors.DefaultSelector, connection_list: list)
     for entry in connection_list:
         print(f"{entry[0]}:\t{(selector.get_key(entry[1])).data.addr}\t{None}")
 
-def send_message(selector: selectors.DefaultSelector, conn_id: int, msg: str):
-    pass
+def send_message(selector: selectors.DefaultSelector, connection_list: list, conn_id: int, msg: str):
+    try:
+        for entry in list:
+            if(entry[0] == conn_id):
+                target_sock = entry[1]
+
+        target_sock.send(msg.encode())
+    except:
+        print("Message failed to send")
 
 def terminate():
     pass
@@ -88,7 +95,7 @@ def get_id():
     return id
 
 def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket) -> Union[selectors.DefaultSelector, list]:
-    # try:
+    try:
         conn, addr = sock.accept()
         print(f"The connection to peer {addr[0]} is succeessfully established;")
         conn.setblocking(False)
@@ -98,14 +105,15 @@ def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, s
         selector.register(conn, events, data=data)
         connection_list.append((id,conn))
         return selector, connection_list
-    # except:
-    #     print("The connection to peer was not established;")
-    #     return selector, connection_list
+    except:
+        print("The connection to peer was not established;")
+        return selector, connection_list
 
 def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, data: any, mask: any) -> Union[selectors.DefaultSelector, list]:
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)
         if recv_data:
+            print(f"Message received from {data.addr}:")
             print(recv_data.decode())
             #selector.unregister(sock)
 
