@@ -1,15 +1,18 @@
-from atexit import unregister
 from collections import namedtuple
 from logging import exception
-from shutil import ExecError
 import socket
 import selectors
 import sys
+import traceback
 from typing import Union
+from requests import get
 
 
 Connection = namedtuple('Connection', ['id', 'addr', 'outb'])
 id = 0
+
+class PROGRAM_EXIT(Exception):
+    pass
 
 def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[selectors.DefaultSelector, list]:
 
@@ -19,7 +22,7 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
     if input[0] == "help":
         help()
     elif input[0] == "myip":
-        get_ip()
+        print(f"The IP address is {get_ip()}")
     elif input[0] == "myport":
         get_port()
     elif input[0] == "connect":
@@ -32,7 +35,7 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
         terminate(selector, connection_list, int(input[1]))
     elif input[0] == "exit":
         (selector, connection_list) = exit_program(selector, connection_list)
-        raise Exception("Exiting program...")
+        raise PROGRAM_EXIT
     else:
         print(  "invalid command: use command "
                 "help to display valid commands" )
@@ -46,11 +49,11 @@ def help():
           "send send messages to peers\n"
           "………….\nexit exit the program")
 
-def get_ip():
-    pass
+def get_ip() -> str:
+    return socket.gethostbyname(socket.gethostname() + ".local")
 
-def get_port():
-    pass
+def get_port(sock: socket.socket):
+    return sock.getsockname()
 
 def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str, port: int) -> Union[selectors.DefaultSelector, list]:
     try:
@@ -114,13 +117,13 @@ def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_i
         connection_list.remove((conn_id, target_sock))
 
         return selector, connection_list
-    except:
-        print(exception)
+    except Exception:
+        traceback.print_exc()
         return selector, connection_list
 
 def exit_program(selector: selectors.DefaultSelector, connection_list: list) -> Union[selectors.DefaultSelector, list]:
         for entry in connection_list:
-            (selector, connection_list) = terminate(selector, connection_list, entry.id)
+            (selector, connection_list) = terminate(selector, connection_list, entry[0])
 
         return selector, connection_list
 
@@ -175,7 +178,7 @@ def main():
     sel = selectors.DefaultSelector()
 
     lsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsocket.bind(("192.168.0.163", int(SEVER_PORT)))
+    lsocket.bind((get_ip(), int(SEVER_PORT)))
     lsocket.listen()
     lsocket.setblocking(False)
 
@@ -197,9 +200,17 @@ def main():
                         (sel, conn_list) = accept_wrapper(sel, conn_list, key.fileobj)
                     else:
                         (sel, conn_list) = receive_msg(sel, conn_list, key.fileobj, key.data, mask)
-    except Exception:
+    except PROGRAM_EXIT:
+        print("Exiting program...")
         lsocket.close()
         sel.close()
-        exit()        
+        exit()
+    except (KeyboardInterrupt):
+        sel, conn_list = exit_program(sel, conn_list)
+        lsocket.close()
+        sel.close()
+        exit()
+    except Exception:
+        traceback.print_exc()
 
 main()
