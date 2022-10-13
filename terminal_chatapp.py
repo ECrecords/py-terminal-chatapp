@@ -1,5 +1,6 @@
 from atexit import unregister
 from collections import namedtuple
+from logging import exception
 import socket
 import selectors
 import sys
@@ -25,7 +26,7 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
     elif input[0] == "list":
         list_connections(selector, connection_list)
     elif input[0] == "send":
-        send_message(selector, int(input[1]), input[2:len(input)])
+        send_message(selector, connection_list, int(input[1]), " ".join(input[2:len(input)]))
     elif input[0] == "terminate":
         terminate()
     elif input[0] == "exit":
@@ -50,7 +51,7 @@ def get_port():
     pass
 
 def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str, port: int) -> Union[selectors.DefaultSelector, list]:
-#    try:
+    try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
         sock.connect_ex((ip, port))
@@ -64,9 +65,9 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
 
         print(f"The connection to peer {ip} is succeessfully established;")
         return selector, connection_list
-    # except:
-    #     print("The connection to peer was not established;")
-    #     return selector, connection_list
+    except:
+        print(f"{exception}\nThe connection to peer was not established;")
+        return selector, connection_list
 
 def list_connections(selector: selectors.DefaultSelector, connection_list: list):
     print(f"id:\tIP Addresss\tPort")
@@ -74,14 +75,16 @@ def list_connections(selector: selectors.DefaultSelector, connection_list: list)
         print(f"{entry[0]}:\t{(selector.get_key(entry[1])).data.addr}\t{None}")
 
 def send_message(selector: selectors.DefaultSelector, connection_list: list, conn_id: int, msg: str):
-    try:
-        for entry in list:
+    # try:
+        for entry in connection_list:
             if(entry[0] == conn_id):
                 target_sock = entry[1]
 
-        target_sock.send(msg.encode())
-    except:
-        print("Message failed to send")
+        target_sock.sendall(msg.encode())
+        return
+    # except:
+    #     print(exception)
+    #     return
 
 def terminate():
     pass
@@ -134,7 +137,7 @@ def main():
     sel = selectors.DefaultSelector()
 
     lsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsocket.bind(("192.168.0.163", int(SEVER_PORT)))
+    lsocket.bind(("192.168.0.187", int(SEVER_PORT)))
     lsocket.listen()
     lsocket.setblocking(False)
 
