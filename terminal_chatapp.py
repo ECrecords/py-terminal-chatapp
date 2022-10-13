@@ -28,7 +28,7 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
     elif input[0] == "send":
         send_message(selector, connection_list, int(input[1]), " ".join(input[2:len(input)]))
     elif input[0] == "terminate":
-        terminate()
+        terminate(selector, connection_list, int(input[1]))
     elif input[0] == "exit":
         exit_program()
     else:
@@ -74,20 +74,46 @@ def list_connections(selector: selectors.DefaultSelector, connection_list: list)
     for entry in connection_list:
         print(f"{entry[0]}:\t{(selector.get_key(entry[1])).data.addr}\t{None}")
 
-def send_message(selector: selectors.DefaultSelector, connection_list: list, conn_id: int, msg: str):
-    # try:
+def send_message(selector: selectors.DefaultSelector, connection_list: list, conn_id: int, msg: str) -> None:
+    try:
+        target_sock: socket.socket
+        target_sock = None
+
+        for entry in connection_list:
+            if(entry[0] == conn_id):
+                target_sock = entry[1]
+        
+        if target_sock is None:
+            print("No corresponding connection was found")    
+            return
+            
+        target_sock.sendall(msg.encode())
+        return
+    except:
+        print("Message failed to send")
+        return
+
+def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_id: int) -> None:
+    try:
+        target_sock: socket.socket
+        target_sock = None
+
         for entry in connection_list:
             if(entry[0] == conn_id):
                 target_sock = entry[1]
 
-        target_sock.sendall(msg.encode())
-        return
-    # except:
-    #     print(exception)
-    #     return
+        if target_sock is None:
+            print("No corresponding connection was found")
+            return    
 
-def terminate():
-    pass
+        target_sock.sendall(b"\n\r\n\rterminate\n\r\n\r")
+        selector.unregister(target_sock)
+        target_sock.close()
+        connection_list.remove((conn_id, target_sock))
+        return
+    except:
+        print(exception)
+        return
 
 def exit_program():
     exit()
@@ -116,9 +142,15 @@ def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)
         if recv_data:
+
+            if receive_msg == b"\n\r\n\rterminate\n\r\n\r":
+                terminate(selector, connection_list, data.id)
+                return
+
             print(f"Message received from {data.addr}:")
             print(recv_data.decode())
             #selector.unregister(sock)
+            return
 
     return selector, connection_list
 
