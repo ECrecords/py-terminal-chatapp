@@ -1,5 +1,6 @@
 from collections import namedtuple
 from logging import exception
+from logging.config import listen
 import socket
 import selectors
 import sys
@@ -8,13 +9,13 @@ from typing import Union
 from requests import get
 
 
-Connection = namedtuple('Connection', ['id', 'addr', 'outb'])
+Connection = namedtuple('Connection', ['id', 'addr', 'port'])
 id = 0
 
 class PROGRAM_EXIT(Exception):
     pass
 
-def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[selectors.DefaultSelector, list]:
+def menu(selector: selectors.DefaultSelector, connection_list: list, listen: socket.socket):
 
     input = (sys.stdin.readline()).rstrip()
 
@@ -24,9 +25,9 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
     elif input[0] == "myip":
         print(f"The IP address is {get_ip()}")
     elif input[0] == "myport":
-        get_port()
+        print(f"The program runs on port number {get_port(listen)}")
     elif input[0] == "connect":
-        (selector, connection_list) = connect(selector, connection_list, input[1], int(input[2]))
+        connect(selector, connection_list, input[1], int(input[2], listen))
     elif input[0] == "list":
         list_connections(selector, connection_list)
     elif input[0] == "send":
@@ -34,7 +35,7 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
     elif input[0] == "terminate":
         terminate(selector, connection_list, int(input[1]))
     elif input[0] == "exit":
-        (selector, connection_list) = exit_program(selector, connection_list)
+        exit_program(selector, connection_list)
         raise PROGRAM_EXIT
     else:
         print(  "invalid command: use command "
@@ -53,21 +54,23 @@ def get_ip() -> str:
     return socket.gethostbyname(socket.gethostname() + ".local")
 
 def get_port(sock: socket.socket):
-    return sock.getsockname()
+    return sock.getsockname()[1]
 
-def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str, port: int) -> Union[selectors.DefaultSelector, list]:
+def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str, port: int, listen: socket.socket):
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, )
         sock.setblocking(False)
         sock.connect_ex((ip, port))
         events = selectors.EVENT_READ
 
         id = get_id()
-        data = Connection(id, ip, "")
+
+        data = Connection(id, ip, port)
 
         connection_list.append((id, sock))
         selector.register(sock, events, data=data)
 
+        sock.sendall(f"\n\r\n\rlisten {get_port(listen)}".encode())
         print(f"The connection to peer {ip} is succeessfully established;")
         return selector, connection_list
     except:
@@ -77,7 +80,8 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
 def list_connections(selector: selectors.DefaultSelector, connection_list: list):
     print(f"id:\tIP Addresss\tPort")
     for entry in connection_list:
-        print(f"{entry[0]}:\t{(selector.get_key(entry[1])).data.addr}\t{None}")
+        sel_key = selector.get_key(entry[1])
+        print(f"{entry[0]}:\t{sel_key.data.addr}\t{sel_key.data.port}")
 
 def send_message(selector: selectors.DefaultSelector, connection_list: list, conn_id: int, msg: str) -> None:
     try:
@@ -98,7 +102,7 @@ def send_message(selector: selectors.DefaultSelector, connection_list: list, con
         print("Message failed to send")
         return
 
-def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_id: int) -> Union[selectors.DefaultSelector, list]:
+def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_id: int):
     try:
         target_sock: socket.socket
         target_sock = None
@@ -132,22 +136,24 @@ def get_id():
     id += 1
     return id
 
-def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket) -> Union[selectors.DefaultSelector, list]:
+def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, listen: socket.socket):
     try:
+        
         conn, addr = sock.accept()
-        print(f"The connection to peer {addr[0]} is succeessfully established;")
+        print(conn.getpeername())
         conn.setblocking(False)
         events = selectors.EVENT_READ
+        
         id = get_id()
-        data = Connection(id, addr[0], "")
+        data = Connection(id, addr[0], addr[1])
         selector.register(conn, events, data=data)
         connection_list.append((id,conn))
-        return selector, connection_list
+        
+        print(f"The connection to peer {addr[0]} is succeessfully established;")
     except:
         print("The connection to peer was not established;")
-        return selector, connection_list
 
-def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, data: any, mask: any) -> Union[selectors.DefaultSelector, list]:
+def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, data: any, mask: any):
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)
         if recv_data:
@@ -155,13 +161,17 @@ def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock
             if recv_data == b"\n\r\n\rterminate\n\r\n\r":
                 print(f"Peer {data.addr} terminates the connection")
                 terminate(selector, connection_list, data.id)
-                return selector, connection_list
-
+                return
+            
+            dec_rd = recv_data.decode()
+            dec_rdata_sp = dec_rd.split(" ")
+            if dec_rdata_sp[0] == "\n\r\n\rlisten":
+                (selector.get_key(sock)).data.port = int(dec_rdata_sp[1])
+                return
+            
             print(f"Message received from {data.addr}:")
-            print(recv_data.decode())
+            print("\"" + dec_rd + "\"")
             #selector.unregister(sock)
-
-    return selector, connection_list
 
 
             
@@ -194,12 +204,12 @@ def main():
             for key, mask in event:
                 
                 if key.data == "STDIN":
-                    (sel, conn_list) = menu(sel,conn_list)
+                    menu(sel,conn_list, lsocket)
                 else:
                     if key.data is None:
-                        (sel, conn_list) = accept_wrapper(sel, conn_list, key.fileobj)
+                        accept_wrapper(sel, conn_list, key.fileobj, lsocket)
                     else:
-                        (sel, conn_list) = receive_msg(sel, conn_list, key.fileobj, key.data, mask)
+                        receive_msg(sel, conn_list, key.fileobj, key.data, mask)
     except PROGRAM_EXIT:
         print("Exiting program...")
         lsocket.close()
