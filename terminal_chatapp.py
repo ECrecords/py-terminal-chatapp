@@ -21,7 +21,7 @@ def menu(selector: selectors.DefaultSelector, connection_list: list) -> Union[se
     elif input[0] == "myport":
         get_port()
     elif input[0] == "connect":
-        (sel, conn_list) = connect(selector, connection_list, input[1], int(input[2]))
+        (selector, connection_list) = connect(selector, connection_list, input[1], int(input[2]))
     elif input[0] == "list":
         list_connections(selector, connection_list)
     elif input[0] == "send":
@@ -50,10 +50,10 @@ def get_port():
     pass
 
 def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str, port: int) -> Union[selectors.DefaultSelector, list]:
-    try:
+#    try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
-        sock.connect((ip | port))
+        sock.connect_ex((ip, port))
         events = selectors.EVENT_READ
 
         id = get_id()
@@ -63,10 +63,10 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
         selector.register(sock, events, data=data)
 
         print(f"The connection to peer {ip} is succeessfully established;")
-        return selector
-    except:
-        print("The connection to peer was not established;")
         return selector, connection_list
+    # except:
+    #     print("The connection to peer was not established;")
+    #     return selector, connection_list
 
 def list_connections(selector: selectors.DefaultSelector, connection_list: list):
     print(f"id:\tIP Addresss\tPort")
@@ -126,7 +126,7 @@ def main():
     sel = selectors.DefaultSelector()
 
     lsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsocket.bind(("192.168.0.187", int(SEVER_PORT)))
+    lsocket.bind(("192.168.0.163", int(SEVER_PORT)))
     lsocket.listen()
     lsocket.setblocking(False)
 
