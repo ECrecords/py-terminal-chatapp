@@ -94,7 +94,9 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
 
         for entry in connection_list:
             sel_key = selector.get_key(entry[1])
-            if sel_key.data.port == port and sel_key.data.addr == ip:
+            key_ip = (sel_key.data.addr).strip()
+            key_port = int(sel_key.data.port)
+            if key_port == port and key_ip == ip:
                 print(f"already connected to {ip} peer at port {port}")
                 return
 
