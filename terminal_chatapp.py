@@ -10,7 +10,7 @@ from requests import get
 
 
 Connection = namedtuple('Connection', ['id', 'addr', 'port'])
-id = 0
+MAX_MSG_SIZE = 100
 
 class PROGRAM_EXIT(Exception):
     pass
@@ -59,8 +59,9 @@ def help():
 
 def get_ip() -> str:
     return socket.gethostbyname(socket.gethostname() + ".local")
+    #return get('https://api.ipify.org').text
 
-def get_port(sock: socket.socket):
+def get_port(sock: socket.socket) -> int:
     return sock.getsockname()[1]
 
 def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str, port: int, listen: socket.socket):
@@ -70,7 +71,7 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
         sock.connect_ex((ip, port))
         events = selectors.EVENT_READ
 
-        id = get_id()
+        id = get_id(connection_list)
 
         data = Connection(id, ip, port)
 
@@ -84,6 +85,10 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
         connection_list.remove((id, sock))
         selector.unregister(sock)
         print(f"The connection to peer failed;")
+    except BlockingIOError:
+        connection_list.remove((id, sock))
+        selector.unregister(sock)
+        print(f"The connection to peer failed;")
 
     except:
         connection_list.remove((id, sock))
@@ -91,7 +96,7 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
         traceback.print_exc()
 
 def list_connections(selector: selectors.DefaultSelector, connection_list: list):
-    print(f"id:\tIP Addresss\tPort")
+    print(f"\nid:\tIP Addresss\tPort")
     for entry in connection_list:
         sel_key = selector.get_key(entry[1])
         print(f"{entry[0]}:\t{sel_key.data.addr}\t{sel_key.data.port}")
@@ -115,7 +120,8 @@ def send_message(selector: selectors.DefaultSelector, connection_list: list, con
         print("Message failed to send")
         return
 
-def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_id: int):
+
+def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_id: int) -> None:
     try:
         target_sock: socket.socket
         target_sock = None
@@ -141,26 +147,35 @@ def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_i
         traceback.print_exc()
 
 
-def exit_program(selector: selectors.DefaultSelector, connection_list: list) -> Union[selectors.DefaultSelector, list]:
+def exit_program(selector: selectors.DefaultSelector, connection_list: list) -> None:
         for entry in connection_list:
-            (selector, connection_list) = terminate(selector, connection_list, entry[0])
+            terminate(selector, connection_list, entry[0])
 
-        return selector, connection_list
 
-def get_id():
-    global id
-    id += 1
+def get_id(connection_list: list) -> None:
+    
+    id = 1
+    prev_id = 0
+    connection_list.sort()
+    
+    for entry in connection_list:
+        
+        if id != entry[0] and id != prev_id:
+            break
+
+        id += 1
+
     return id
 
-def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, listen: socket.socket):
+
+def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, listen: socket.socket) -> None:
     try:
         
         conn, addr = sock.accept()
-        print(conn.getpeername())
         conn.setblocking(False)
         events = selectors.EVENT_READ
         
-        id = get_id()
+        id = get_id(connection_list)
         data = Connection(id, addr[0], addr[1])
         selector.register(conn, events, data=data)
         connection_list.append((id,conn))
@@ -169,9 +184,9 @@ def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, s
     except:
         print("The connection to peer was not established;")
 
-def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, data: any, mask: any):
+def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, data: any, mask: any) -> None:
     if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)
+        recv_data = sock.recv(MAX_MSG_SIZE)
         if recv_data:
 
             if recv_data == b"\n\r\n\rterminate\n\r\n\r":
@@ -190,8 +205,9 @@ def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock
                 selector.register(sock, selectors.EVENT_READ, data=Connection(id, ip, port))
                 return
             
-            print(f"Message received from {data.addr}:")
-            print("\"" + dec_rd + "\"")
+            print(f"Message received from {data.addr}")
+            print(f"Sender's Port: {data.port}")
+            print("Message: \"" + dec_rd + "\"")
             #selector.unregister(sock)
 
 
@@ -209,7 +225,7 @@ def main():
     sel = selectors.DefaultSelector()
 
     lsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsocket.bind((get_ip(), int(SEVER_PORT)))
+    lsocket.bind(("0.0.0.0", int(SEVER_PORT)))
     lsocket.listen()
     lsocket.setblocking(False)
 
@@ -219,7 +235,7 @@ def main():
     try:
         while True:
 
-            #print(">>", flush=True, end=" ")
+            print(">>", end=" ")
             event = sel.select(timeout=None)
 
             for key, mask in event:
@@ -241,7 +257,7 @@ def main():
         lsocket.close()
         sel.close()
         exit()
-    except Exception:
+    except:
         exit_program(sel, conn_list)
         lsocket.close()
         sel.close()
