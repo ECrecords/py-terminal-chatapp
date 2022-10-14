@@ -32,15 +32,23 @@ def menu(selector: selectors.DefaultSelector, connection_list: list, listen: soc
         elif input[0] == "myport":
             print(f"The program runs on port number {get_port(listen)}")
         elif input[0] == "connect":
-            connect(selector, connection_list, input[1], int(input[2]), listen)
+            try:
+                connect(selector, connection_list, input[1], int(input[2]), listen)
+            except ValueError as e:
+                print(f"{e}: invalid port number")
         elif input[0] == "list":
             list_connections(selector, connection_list)
         elif input[0] == "send":
-            send_message(selector, connection_list, int(input[1]), " ".join(input[2:len(input)]))
+            try:
+                send_message(selector, connection_list, int(input[1]), " ".join(input[2:len(input)]))
+            except ValueError as e:
+                print(f"{e}: invalid connection id")
         elif input[0] == "terminate":
-            terminate(selector, connection_list, int(input[1]))
+            try:
+                terminate(selector, connection_list, int(input[1]))
+            except ValueError as e:
+                print(f"{e}: invalid connection id")
         elif input[0] == "exit":
-            exit_program(selector, connection_list)
             raise PROGRAM_EXIT
         else:
             print(  "invalid command: use command "
@@ -58,17 +66,47 @@ def help():
           "………….\nexit - exit the program")
 
 def get_ip() -> str:
-    return socket.gethostbyname(socket.gethostname() + ".local")
+    try:
+        ip = socket.gethostbyname(socket.gethostname() + ".local")
+    except:
+        ip = None
+        print("failed to retrieve ip")
+    finally:
+        return ip
+    
     #return get('https://api.ipify.org').text
 
 def get_port(sock: socket.socket) -> int:
-    return sock.getsockname()[1]
+    try:
+        port = sock.getsockname()[1]
+    except:
+        port = None
+        print("failed to retrieve port")
+    finally:
+        return port
 
 def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str, port: int, listen: socket.socket):
     try:
+
+        if ip == get_ip() and port == get_port(listen):
+            print(f"can not connect to self")
+            return
+
+        for entry in connection_list:
+            sel_key = selector.get_key(entry[1])
+            if sel_key.data.port == port and sel_key.data.addr == ip:
+                print(f"already connected to {ip} peer at port {port}")
+                return
+
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, )
         sock.setblocking(False)
-        sock.connect_ex((ip, port))
+        try:
+            sock.connect_ex((ip, port))
+        except:
+            print(f"failed to connect")
+            return
+    
         events = selectors.EVENT_READ
 
         id = get_id(connection_list)
@@ -80,15 +118,17 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
 
         sleep(0.1)
         sock.sendall(f"\n\r\n\rlisten {get_port(listen)}".encode())
-        print(f"The connection to peer {ip} is succeessfully established;")
-    except ConnectionError:
+        print(f"The connection to peer {ip} is succeessfully established")
+    except ConnectionError as e:
         connection_list.remove((id, sock))
         selector.unregister(sock)
-        print(f"The connection to peer failed;")
-    except BlockingIOError:
+        sock.close()
+        print(f"{e}: connection failed")
+    except BlockingIOError as e:
         connection_list.remove((id, sock))
         selector.unregister(sock)
-        print(f"The connection to peer failed;")
+        sock.close()
+        print(f"{e}: failed to communicate with connection")
 
     except:
         connection_list.remove((id, sock))
@@ -97,9 +137,13 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
 
 def list_connections(selector: selectors.DefaultSelector, connection_list: list):
     print(f"\nid:\tIP Addresss\tPort")
-    for entry in connection_list:
-        sel_key = selector.get_key(entry[1])
-        print(f"{entry[0]}:\t{sel_key.data.addr}\t{sel_key.data.port}")
+    try:
+        connection_list.sort()
+        for entry in connection_list:
+            sel_key = selector.get_key(entry[1])
+            print(f"{entry[0]}:\t{sel_key.data.addr}\t{sel_key.data.port}")
+    except:
+        print(f"failed to list connetions")
 
 def send_message(selector: selectors.DefaultSelector, connection_list: list, conn_id: int, msg: str) -> None:
     try:
@@ -115,9 +159,14 @@ def send_message(selector: selectors.DefaultSelector, connection_list: list, con
             return
             
         target_sock.sendall(msg.encode())
-        return
+    except BrokenPipeError as e:
+            print(f"{e}: broken pip")
+            target_sock.close()
+            selector.unregister(target_sock)
+            connection_list.remove((conn_id, target_sock))
     except:
         print("Message failed to send")
+    finally:
         return
 
 
@@ -139,7 +188,8 @@ def terminate(selector: selectors.DefaultSelector, connection_list: list, conn_i
         target_sock.close()
         connection_list.remove((conn_id, target_sock))
 
-    except BrokenPipeError:
+    except BrokenPipeError as e:
+            print(f"{e}: broken pip")
             target_sock.close()
             selector.unregister(target_sock)
             connection_list.remove((conn_id, target_sock))
@@ -215,22 +265,54 @@ def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock
 
 def main():
 
+    # intial check 
     if len(sys.argv) != 2:
         print("usage: python3 terminal_chatapp <port number>")
         exit()
 
     # Grabs port from program arguments
+
     SEVER_PORT = sys.argv[1]
+
+    # Used to start the sockets of each connection
     conn_list = list()
+
     sel = selectors.DefaultSelector()
 
+    # create the listen TCP socket
     lsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsocket.bind(("0.0.0.0", int(SEVER_PORT)))
+
+    try:
+        # 0.0.0.0 was used for the app binds to all network intefaces
+        lsocket.bind(("0.0.0.0", int(SEVER_PORT)))
+    except OSError as e:
+        print(f"{e}: failed to bind")
+        lsocket.close()
+        sel.close()
+        exit()
+    except ValueError as e:
+        print(f"{e}: invalid port number")
+        lsocket.close()
+        sel.close()
+        exit()
+    except:
+        traceback.print_exc()
+        lsocket.close()
+        sel.close()
+        exit()
+
+    
     lsocket.listen()
+
     lsocket.setblocking(False)
 
     sel.register(lsocket, selectors.EVENT_READ, data=None)
     sel.register(sys.stdin, selectors.EVENT_READ, data="STDIN")
+
+    print("\n=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
+    print("=*=*=*=*=* Welcome to Elvis's Chat Application =*=*=*=*=*")
+    print("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
+    help() # print menu at program start
 
     try:
         while True:
@@ -241,7 +323,7 @@ def main():
             for key, mask in event:
                 
                 if key.data == "STDIN":
-                    menu(sel,conn_list, lsocket)
+                    menu(sel, conn_list, lsocket)
                 else:
                     if key.data is None:
                         accept_wrapper(sel, conn_list, key.fileobj, lsocket)
@@ -249,10 +331,11 @@ def main():
                         receive_msg(sel, conn_list, key.fileobj, key.data, mask)
     except PROGRAM_EXIT:
         print("Exiting program...")
+        exit_program(sel, conn_list)
         lsocket.close()
         sel.close()
         exit()
-    except (KeyboardInterrupt):
+    except KeyboardInterrupt:
         exit_program(sel, conn_list)
         lsocket.close()
         sel.close()
