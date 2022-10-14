@@ -69,8 +69,11 @@ def get_ip() -> str:
     try:
         ip = socket.gethostbyname(socket.gethostname() + ".local")
     except:
-        ip = None
-        print("failed to retrieve ip")
+        try: 
+            ip = socket.gethostbyname(socket.gethostname())
+        except:
+            ip = None
+            print("failed to retrieve ip")
     finally:
         return ip
     
