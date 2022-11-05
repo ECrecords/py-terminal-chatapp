@@ -1,17 +1,21 @@
 from collections import namedtuple
-from logging import exception
+
+import sys
+
 import socket
 import selectors
-import sys
+
 from time import sleep
+
 import traceback
-from typing import Union
-from requests import get
 
-
+# constants and declared types
 Connection = namedtuple('Connection', ['id', 'addr', 'port'])
+
+# maximum number of charaters in string to be sent
 MAX_MSG_SIZE = 100
 
+# exception used to terminate program
 class PROGRAM_EXIT(Exception):
     pass
 
@@ -65,17 +69,20 @@ def help():
           "send <id> <msg> - send messages to peers\n"
           "………….\nexit - exit the program")
 
+# used to display ip
 def get_ip() -> str:
     try:
         ip = socket.gethostbyname(socket.gethostname() + ".local")
     except:
-        ip = None
-        print("failed to retrieve ip")
+        try: 
+            ip = socket.gethostbyname(socket.gethostname())
+        except:
+            ip = None
+            print("failed to retrieve ip")
     finally:
         return ip
-    
-    #return get('https://api.ipify.org').text
 
+# used to get the port of a specified socket
 def get_port(sock: socket.socket) -> int:
     try:
         port = sock.getsockname()[1]
@@ -94,7 +101,9 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
 
         for entry in connection_list:
             sel_key = selector.get_key(entry[1])
-            if sel_key.data.port == port and sel_key.data.addr == ip:
+            key_ip = (sel_key.data.addr).strip()
+            key_port = int(sel_key.data.port)
+            if key_port == port and key_ip == ip:
                 print(f"already connected to {ip} peer at port {port}")
                 return
 
@@ -258,13 +267,11 @@ def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock
             print(f"Message received from {data.addr}")
             print(f"Sender's Port: {data.port}")
             print("Message: \"" + dec_rd + "\"")
-            #selector.unregister(sock)
-
 def main():
 
     # intial check 
     if len(sys.argv) != 2:
-        print("usage: python3 terminal_chatapp <port number>")
+        print("usage: python3 chat.py <port number>")
         exit()
 
     # Grabs port from program arguments
@@ -344,5 +351,5 @@ def main():
         traceback.print_exc()
         exit()
 
-if __name__ == '__main__':
+if __name__ == "__main":
     main()
