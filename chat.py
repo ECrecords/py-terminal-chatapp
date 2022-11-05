@@ -63,11 +63,12 @@ def menu(selector: selectors.DefaultSelector, connection_list: list, listen: soc
 
 # wrapper, display menu
 def help():
-    print("myip - display IP address\n"
-          "myport - display Port\n"
-          "connect <ip> <port> - connect to another peer \n"
-          "send <id> <msg> - send messages to peers\n"
-          "………….\nexit - exit the program")
+    print("myip \t\t\t- display IP address\n"
+          "myport \t\t\t- display Port\n"
+          "connect <ip> <port>\t- connect to another peer \n"
+          "send <id> <msg>\t\t- send messages to peers\n"
+          "terminate <id>\t\t- end peer connection\n"
+          "------------\nexit\t\t- exit the program")
 
 # used to display ip
 def get_ip() -> str:
@@ -246,27 +247,27 @@ def accept_wrapper(selector: selectors.DefaultSelector, connection_list: list, s
 def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock: socket.socket, data: any, mask: any) -> None:
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(MAX_MSG_SIZE)
-        if recv_data:
 
-            if recv_data == b"\n\r\n\rterminate\n\r\n\r":
-                print(f"Peer {data.addr} terminates the connection")
-                terminate(selector, connection_list, data.id)
-                return
-            
-            dec_rd = recv_data.decode()
-            dec_rdata_sp = dec_rd.split(" ")
-            if dec_rdata_sp[0] == "\n\r\n\rlisten":
-                sel_key = selector.get_key(sock)
-                id = sel_key.data.id
-                ip = sel_key.data.addr
-                port = dec_rdata_sp[1]
-                selector.unregister(sock)
-                selector.register(sock, selectors.EVENT_READ, data=Connection(id, ip, port))
-                return
-            
-            print(f"Message received from {data.addr}")
-            print(f"Sender's Port: {data.port}")
-            print("Message: \"" + dec_rd + "\"")
+        if recv_data == b"\n\r\n\rterminate\n\r\n\r":
+            print(f"Peer {data.addr} terminates the connection")
+            terminate(selector, connection_list, data.id)
+            return
+        
+        dec_rd = recv_data.decode()
+        dec_rdata_sp = dec_rd.split(" ")
+        if dec_rdata_sp[0] == "\n\r\n\rlisten":
+            sel_key = selector.get_key(sock)
+            id = sel_key.data.id
+            ip = sel_key.data.addr
+            port = dec_rdata_sp[1]
+            selector.unregister(sock)
+            selector.register(sock, selectors.EVENT_READ, data=Connection(id, ip, port))
+            return
+        
+        print(f"Message received from {data.addr}")
+        print(f"Sender's Port: {data.port}")
+        print("Message: \"" + dec_rd + "\"")
+        
 def main():
 
     # intial check 
@@ -313,9 +314,7 @@ def main():
     sel.register(lsocket, selectors.EVENT_READ, data=None)
     sel.register(sys.stdin, selectors.EVENT_READ, data="STDIN")
 
-    print("\n=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
-    print("=*=*=*=*=* Welcome to Elvis's Chat Application =*=*=*=*=*")
-    print("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
+    print("Welcome to Chat Application")
     help() # print menu at program start
 
     try:
@@ -351,5 +350,5 @@ def main():
         traceback.print_exc()
         exit()
 
-if __name__ == "__main":
+if __name__ == "__main__":
     main()
