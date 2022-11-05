@@ -94,9 +94,7 @@ def connect(selector: selectors.DefaultSelector, connection_list: list, ip: str,
 
         for entry in connection_list:
             sel_key = selector.get_key(entry[1])
-            key_ip = (sel_key.data.addr).strip()
-            key_port = int(sel_key.data.port)
-            if key_port == port and key_ip == ip:
+            if sel_key.data.port == port and sel_key.data.addr == ip:
                 print(f"already connected to {ip} peer at port {port}")
                 return
 
@@ -262,9 +260,6 @@ def receive_msg(selector: selectors.DefaultSelector, connection_list: list, sock
             print("Message: \"" + dec_rd + "\"")
             #selector.unregister(sock)
 
-
-            
-
 def main():
 
     # intial check 
@@ -349,4 +344,5 @@ def main():
         traceback.print_exc()
         exit()
 
-main()
+if __name__ == '__main__':
+    main()
