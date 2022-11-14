@@ -9,6 +9,10 @@ from time import sleep
 
 import traceback
 
+from requests import get
+
+
+
 # constants and declared types
 Connection = namedtuple('Connection', ['id', 'addr', 'port'])
 
@@ -72,16 +76,7 @@ def help():
 
 # used to display ip
 def get_ip() -> str:
-    try:
-        ip = socket.gethostbyname(socket.gethostname() + ".local")
-    except:
-        try: 
-            ip = socket.gethostbyname(socket.gethostname())
-        except:
-            ip = None
-            print("failed to retrieve ip")
-    finally:
-        return ip
+    return get('https://api.ipify.org').content.decode('utf8')
 
 # used to get the port of a specified socket
 def get_port(sock: socket.socket) -> int:
